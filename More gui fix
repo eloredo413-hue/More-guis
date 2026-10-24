@@ -40,6 +40,28 @@ do
 		return src
 	end
 
+	-- 2023 old only queues its GUI to load after a rejoin, so nothing
+	-- shows up when the rejoin doesn't happen. Like 2023 new, also load
+	-- the queued GUI in this server right away. Its payload runs once per
+	-- server, so its own load-here fallback doesn't load it twice.
+	local function alsoLoadHere(fn, ...)
+		if type(fn) ~= "function" or not (setfenv and getfenv) then
+			return fn, ...
+		end
+		local realQueue = queue_on_teleport or (syn and syn.queue_on_teleport)
+		setfenv(fn, setmetatable({
+			queue_on_teleport = function(payload)
+				if not realQueue then error("queue_on_teleport is not available") end
+				realQueue(payload)
+				task.spawn(function()
+					local ok, err = pcall(function() _ORIG_LS(payload)() end)
+					if not ok then warn("[2023 old] Loading here failed: " .. tostring(err)) end
+				end)
+			end,
+		}, { __index = getfenv(fn) }))
+		return fn
+	end
+
 	local function patched(code, name)
 		if type(code) ~= "string" then
 			return _ORIG_LS(code, name)
@@ -111,7 +133,7 @@ do
 			elseif variant == "old" then
 				print("[2023 Hook] Loading OLD 2023 GUI...")
 				local src = fetchURL(URL_2023_OLD, "2023 old")
-				if src then return _ORIG_LS(src, name) end
+				if src then return alsoLoadHere(_ORIG_LS(src, name)) end
 				warn("[2023 Hook] OLD fetch failed — falling back to base 2023.")
 			end
 		end
