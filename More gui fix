@@ -262,7 +262,9 @@ task.spawn(function()
 		for _, frame in ipairs(sg:GetChildren()) do
 			if frame:IsA("Frame") and not handled[frame] then
 				local slider = nil
-				for _, d in ipairs(frame:GetDescendants()) do
+				-- The dropdown list sits right inside the topbar frame. Reading
+				-- every descendant walked the whole hammer panel every frame.
+				for _, d in ipairs(frame:GetChildren()) do
 					if d:IsA("ScrollingFrame") then
 						for _, opt in ipairs(d:GetChildren()) do
 							if opt:IsA("TextButton") and opt.Text:find("2023", 1, true) then
@@ -621,8 +623,26 @@ task.spawn(function()
 		end
 	end
 
+	-- Only re-check after something was added to the GUI (plus every 2 seconds
+	-- as a backstop): walking the whole GUI five times a second was a steady
+	-- source of lag.
+	local dirty = true
+	local watchedRoot, rootConn
+	local lastFull = 0
 	while true do
 		task.wait(0.2)
-		pcall(dedupe)
+		local root = getBloxyRoot()
+		if root ~= watchedRoot then
+			if rootConn then rootConn:Disconnect() end
+			watchedRoot = root
+			rootConn = root and root.DescendantAdded:Connect(function() dirty = true end) or nil
+			dirty = true
+		end
+		local now = os.clock()
+		if dirty or now - lastFull >= 2 then
+			dirty = false
+			lastFull = now
+			pcall(dedupe)
+		end
 	end
 end)
