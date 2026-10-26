@@ -13,10 +13,10 @@ end
 do
 	local URL_2024      = "https://gist.githubusercontent.com/eloredo413-hue/f0cf527c3c42f43fb90b33613f2f9a94/raw/2f8e97781c1403836df58510decebe961cc97074/2024%2520Gui"
 	local URL_2023_NEW  = "https://gist.githubusercontent.com/eloredo413-hue/4a556148bc45d14ac710a87efef6bcc6/raw/4893deb9647440ba0f9058e0666272fb20e48eba/2023%2520New%2520Gui"
-	local URL_2023_OLD  = "https://gist.githubusercontent.com/eloredo413-hue/820f4614fccf5cadbd8d84b18ee1635c/raw/6adda6838d3df2e8bd7533c1161eb0585093c2bd/2023%2520old"
+	local URL_2023_OLD  = "https://gist.githubusercontent.com/eloredo413-hue/0846e3711f0a0b6b66626c84ee874a0f/raw/6e8cb8c318e8c745314c54616535f287ca9981fd/2023%2520Old%2520Gui"
 	local URL_2021      = "https://gist.githubusercontent.com/eloredo413-hue/46ee252aa3b7420b76431369e2d5e091/raw/02e4c126aecb5efa720a257e005aa319ac7fe43b/2021%2520gui"
 	local URL_2019      = "https://gist.githubusercontent.com/eloredo413-hue/2c867970649c45c8bf1eef42c7463787/raw/06e46c2ece7121a20c45728a86644d1d1e7b1e9d/2019%2520gui"
-	local URL_2017      = "https://gist.githubusercontent.com/eloredo413-hue/495540d2bae5557547d36718dd46bc95/raw/79c95e9a5b1733dd6d2cdb3d2731c04db41faa76/2017%2520gui"
+	local URL_2017      = "https://gist.githubusercontent.com/eloredo413-hue/24ec2dd2cfd971ed6b57257b8affa672/raw/011a226b83d736be490b67a4c31239f20343e5c4/2017%2520gui"
 	local URL_2013MOB   = "https://gist.githubusercontent.com/eloredo413-hue/36da5f0c6ada87039d9e69128abe47ff/raw/baa42b6049ea9c2859a4b748964520835b0ac44e/2013%2520Mobile%2520gui%2520fixed"
 	local URL_2006      = "https://gist.githubusercontent.com/eloredo413-hue/e4182150a8bb79c060e86cee0c8502a3/raw/7168e05ba30196189fcd612181d88bb718a45ddc/2006-2007%2520Gui"
 	local URL_2005      = "https://gist.githubusercontent.com/eloredo413-hue/7eca661bd68389b3fb2ec5b762b3fb7a/raw/17af25bbea489d0e47334f0f72b183421522536e/2005%2520gui"
@@ -38,6 +38,28 @@ do
 		end
 		print("[" .. label .. "] Fetched " .. #src .. " bytes.")
 		return src
+	end
+
+	-- 2023 old only queues its GUI to load after a rejoin, so nothing
+	-- shows up when the rejoin doesn't happen. Like 2023 new, also load
+	-- the queued GUI in this server right away. Its payload runs once per
+	-- server, so its own load-here fallback doesn't load it twice.
+	local function alsoLoadHere(fn, ...)
+		if type(fn) ~= "function" or not (setfenv and getfenv) then
+			return fn, ...
+		end
+		local realQueue = queue_on_teleport or (syn and syn.queue_on_teleport)
+		setfenv(fn, setmetatable({
+			queue_on_teleport = function(payload)
+				if not realQueue then error("queue_on_teleport is not available") end
+				realQueue(payload)
+				task.spawn(function()
+					local ok, err = pcall(function() _ORIG_LS(payload)() end)
+					if not ok then warn("[2023 old] Loading here failed: " .. tostring(err)) end
+				end)
+			end,
+		}, { __index = getfenv(fn) }))
+		return fn
 	end
 
 	local function patched(code, name)
@@ -111,7 +133,7 @@ do
 			elseif variant == "old" then
 				print("[2023 Hook] Loading OLD 2023 GUI...")
 				local src = fetchURL(URL_2023_OLD, "2023 old")
-				if src then return _ORIG_LS(src, name) end
+				if src then return alsoLoadHere(_ORIG_LS(src, name)) end
 				warn("[2023 Hook] OLD fetch failed — falling back to base 2023.")
 			end
 		end
