@@ -328,16 +328,29 @@ do
 		{ "\t\t\t\tContainer.Position = UDim2.new(1, -offset, 0, 2)", "\t\t\t\tContainer.Position = UDim2.new(1, -offset, 0, 44)" },
 		{ "\nreturn Playerlist", [=[
 
---[[ Early 2015: your name on top, the list slides open under it from the tab ]]--
+--[[ Early 2015: your name on top, the list slides open under it from the tab
+     (tap or drag it), tap your name for the big view in the middle ]]--
 do
-	local HEADER_HEIGHT, SLIDE_TIME = 40, 0.25
+	local HEADER_HEIGHT, SLIDE_TIME, WIDE_TIME, DRAG_DISTANCE = 40, 0.25, 0.3, 6
+	local TweenService = game:GetService('TweenService')
 
-	local header = Instance.new('Frame')
+	-- everything moves together inside this when the big view opens
+	local holder = Instance.new('Frame')
+	holder.Name = "PlayerListHolder"
+	holder.BackgroundTransparency = 1
+	holder.Size = UDim2.new(1, 0, 1, 0)
+	holder.Parent = NewRobloxGui
+	Container.Parent = holder
+
+	local header = Instance.new('TextButton')
 	header.Name = "PlayerListHeader"
+	header.AutoButtonColor = false
+	header.Text = ""
+	header.AnchorPoint = Vector2.new(1, 0)
 	header.BackgroundColor3 = BG_COLOR
 	header.BackgroundTransparency = BG_TRANSPARENCY
 	header.BorderSizePixel = 0
-	header.Parent = NewRobloxGui
+	header.Parent = holder
 
 	local headerName = Instance.new('TextLabel')
 	headerName.Name = "PlayerName"
@@ -363,10 +376,11 @@ do
 
 	local tab = Instance.new('TextButton')
 	tab.Name = "ExtendTab"
+	tab.AutoButtonColor = false
 	tab.BackgroundTransparency = 1
 	tab.Text = ""
 	tab.Size = UDim2.new(0, 44, 0, 20)
-	tab.Parent = Container
+	tab.Parent = header
 	for i = 0, 1 do
 		local line = Instance.new('Frame')
 		line.BackgroundColor3 = Color3.new(1, 1, 1)
@@ -376,21 +390,65 @@ do
 		line.Parent = tab
 	end
 
-	local slide = Instance.new('NumberValue') -- 0 closed, 1 open
+	local slide = Instance.new('NumberValue') -- list: 0 closed, 1 open
+	local wide = Instance.new('NumberValue') -- big view: 0 off, 1 on
 	local function layout()
-		header.Size = UDim2.new(0, Container.Size.X.Offset, 0, HEADER_HEIGHT)
-		header.Position = UDim2.new(1, Container.Position.X.Offset, 0, 2)
+		local w = wide.Value
+		-- big view: half the screen wide, a tenth of the way down
+		holder.Size = UDim2.new(1 - 0.25 * w, 0, 1, 0)
+		holder.Position = UDim2.new(0, 0, 0.1 * w, -2 * w)
+		local width = Container.Size.X.Offset
+		header.Size = UDim2.new((2 / 3) * w, (1 - w) * width, 0, HEADER_HEIGHT)
+		header.Position = UDim2.new(1, Container.Position.X.Offset + width, 0, 2)
 		header.Visible = Container.Visible
 		local shown = slide.Value * ScrollList.Size.Y.Offset
 		ScrollList.Position = UDim2.new(0, 0, 0, shown - ScrollList.Size.Y.Offset)
-		tab.Position = UDim2.new(0.5, -22, 0, shown + 2)
+		tab.Position = UDim2.new(0.5, -22, 1, shown + 4)
 	end
 
-	tab.MouseButton1Click:connect(function()
-		local goal = (slide.Value < 0.5) and 1 or 0
-		game:GetService('TweenService'):Create(slide, TweenInfo.new(SLIDE_TIME, Enum.EasingStyle.Quad), { Value = goal }):Play()
+	local tweens = {}
+	local function tweenTo(value, goal, time)
+		if tweens[value] then tweens[value]:Cancel() end
+		tweens[value] = TweenService:Create(value, TweenInfo.new(time, Enum.EasingStyle.Quad), { Value = goal })
+		tweens[value]:Play()
+	end
+
+	header.MouseButton1Click:connect(function()
+		tweenTo(wide, (wide.Value < 0.5) and 1 or 0, WIDE_TIME)
 	end)
+
+	-- the tab: drag it to pull the list open or shut, or tap it
+	tab.InputBegan:connect(function(input)
+		local isTouch = input.UserInputType == Enum.UserInputType.Touch
+		if not isTouch and input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+		if tweens[slide] then tweens[slide]:Cancel() end
+		local startY, startSlide, dragged = input.Position.Y, slide.Value, false
+		local moveConn, endConn
+		moveConn = UserInputService.InputChanged:connect(function(changed)
+			if isTouch and changed ~= input then return end
+			if not isTouch and changed.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+			local dy = changed.Position.Y - startY
+			if math.abs(dy) >= DRAG_DISTANCE then dragged = true end
+			local height = ScrollList.Size.Y.Offset
+			if dragged and height > 0 then
+				slide.Value = math.max(0, math.min(1, startSlide + dy / height))
+			end
+		end)
+		endConn = UserInputService.InputEnded:connect(function(ended)
+			if isTouch and ended ~= input then return end
+			if not isTouch and ended.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+			moveConn:disconnect()
+			endConn:disconnect()
+			if dragged then
+				tweenTo(slide, (slide.Value >= 0.5) and 1 or 0, SLIDE_TIME)
+			else
+				tweenTo(slide, (startSlide < 0.5) and 1 or 0, SLIDE_TIME)
+			end
+		end)
+	end)
+
 	slide.Changed:connect(layout)
+	wide.Changed:connect(layout)
 	Container.Changed:connect(function(property)
 		if property == 'Size' or property == 'Position' or property == 'Visible' then layout() end
 	end)
