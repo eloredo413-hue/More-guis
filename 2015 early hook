@@ -320,11 +320,15 @@ do
 		-- 2016 hid it on phones; early 2015 showed it there
 		{ "local IsSmallScreenDevice = UserInputService.TouchEnabled and GuiService:GetScreenResolution().Y <= 500",
 			"local IsSmallScreenDevice = false" },
-		-- early 2015's thinner, slightly narrower rows
+		-- early 2015's thinner, slightly narrower rows; narrower still on
+		-- phones, so a couple of stats don't take half the screen
+		{ "local MinContainerSize = UDim2.new(0, 165, 0.5, 0)\n",
+			"local IsPhone = UserInputService.TouchEnabled and GuiService:GetScreenResolution().Y <= 500\nlocal MinContainerSize = UDim2.new(0, IsPhone and 130 or 165, 0.5, 0)\n" },
 		{ "local PlayerEntrySizeY = 24\n", "local PlayerEntrySizeY = 18\n" },
-		{ "local NameEntrySizeX = 170\n", "local NameEntrySizeX = 160\n" },
+		{ "local NameEntrySizeX = 170\n", "local NameEntrySizeX = IsPhone and 120 or 160\n" },
+		{ "local StatEntrySizeX = 75\n", "local StatEntrySizeX = IsPhone and 45 or 75\n" },
 		-- the list starts under the 40px header
-		{ "\tContainer.Position = UDim2.new(1, -167, 0, 2)", "\tContainer.Position = UDim2.new(1, -167, 0, 44)" },
+		{ "\tContainer.Position = UDim2.new(1, -167, 0, 2)", "\tContainer.Position = UDim2.new(1, -MinContainerSize.X.Offset - 2, 0, 44)" },
 		{ "\t\t\t\tContainer.Position = UDim2.new(1, -offset, 0, 2)", "\t\t\t\tContainer.Position = UDim2.new(1, -offset, 0, 44)" },
 		{ "\nreturn Playerlist", [=[
 
