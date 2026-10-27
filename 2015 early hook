@@ -1,12 +1,16 @@
 -- [[ 2015 EARLY HOOK (mobile and PC) ]]
--- Early 2015 is the 2014 GUI with Roblox's 2015 backpack, before the dark
--- top bar came in late 2015. This loads the 2014 GUI (menu, chat, health,
--- leaderboard) and swaps its backpack for Legacy's own 2015 one, set up the
--- way it was without the top bar:
+-- Early 2015 is the 2014 GUI with Roblox's 2015 backpack and chat, before
+-- the dark top bar came in late 2015. This loads the 2014 GUI (menu,
+-- health, leaderboard) and runs Legacy's own 2015 backpack and chat in
+-- place of the 2014 ones, set up the way they were without the top bar:
 --    60px hotbar slots above the health bar (3 on phones, 10 on PC)
 --    the arrow above the hotbar opens the inventory: "Search" on top, then
 --    the tools that aren't on the hotbar; drag them onto the hotbar
+--    (phones: swipe the list to scroll, double tap a tool to put it on
+--    the hotbar)
 --    the hotbar slots go solid while the inventory is open
+--    chat lines with a colored dot before "[name]:", the gray Chat button,
+--    and a darker box behind the chat while you type
 -- Fixes kept from the "2014 gui fix":
 --    the dark background behind the menus covers the whole screen (it left
 --    strips at the sides on phones) and goes above the leaderboard, chat and
@@ -165,22 +169,70 @@ do
 	end
 
 	------------------------------------------------------------
-	-- 2015 BACKPACK: the 2014 base loads Legacy through RBXMSuite. Hand it
-	-- a copy whose launch swaps the 2014 GUI's backpack for the 2015 one
-	-- before the GUI starts, then fixes the GUI.
+	-- 2015 BACKPACK AND CHAT: the 2014 base loads Legacy through RBXMSuite.
+	-- Hand it a copy whose launch, before the GUI starts, runs Legacy's own
+	-- 2015 backpack and chat in place of the 2014 ones, set up the way they
+	-- were without the top bar, then fixes the GUI.
 	------------------------------------------------------------
 	local SUITE_URL = "https://raw.githubusercontent.com/yeku/forks/refs/heads/main/Scripts/RBXMSuite.luau"
 	-- RBXMSuite's debug mode starts each script's Source with this, and loads
 	-- the Source when the script is first required (so a swap before that counts)
 	local HEADER = "^local script, require = unpack%b(); "
 
-	-- without the top bar the arrow is what opens the inventory, so it takes taps
-	local ARROW_BUTTON = [[
+	-- each change: { text in Legacy's 2015 script, what it becomes }
+	local BACKPACK_CHANGES = {
+		-- arrow above the hotbar, hotbar moved up for the health bar
+		{ "local TopBarEnabled = true", "local TopBarEnabled = false" },
+		-- the top bar opened the inventory, now the arrow does, so it takes taps
+		{ "\t\tarrowFrame.Parent = MainFrame", [[
 		local arrowButton = NewGui('TextButton', 'Button')
 		arrowButton.BorderSizePixel = 0
 		arrowButton.Parent = arrowFrame
 		arrowButton.MouseButton1Click:connect(openClose)
-]]
+		arrowFrame.Parent = MainFrame]] },
+		-- phones: an inventory tool doesn't grab your finger, so a swipe
+		-- anywhere in the list scrolls it (double tap puts it on the hotbar)
+		{ "local DOUBLE_CLICK_TIME = 0.5\n",
+			"local DOUBLE_CLICK_TIME = 0.5\nlocal SWIPE_TO_SCROLL = game:GetService('UserInputService').TouchEnabled\n" },
+		{ "\t\tif not hotbarSlot or inventoryOpen then\n\t\t\tSlotFrame.Draggable = true\n\t\tend",
+			"\t\tif not hotbarSlot or inventoryOpen then\n\t\t\tSlotFrame.Draggable = not (SWIPE_TO_SCROLL and not hotbarSlot)\n\t\tend" },
+		{ "\t\tSlotFrame.BackgroundTransparency = (SlotFrame.Draggable) and 0 or SLOT_FADE_LOCKED\n\t\tSlotFrame.BackgroundColor3 = (SlotFrame.Draggable) and SLOT_DRAGGABLE_COLOR or BACKGROUND_COLOR", [[
+		local solid = SlotFrame.Draggable or (SWIPE_TO_SCROLL and slot.Tool and slot.Index > HOTBAR_SLOTS)
+		SlotFrame.BackgroundTransparency = (solid) and 0 or SLOT_FADE_LOCKED
+		SlotFrame.BackgroundColor3 = (solid) and SLOT_DRAGGABLE_COLOR or BACKGROUND_COLOR]] },
+		{ "\tslot.Frame = SlotFrame\n", [[
+	slot.Frame = SlotFrame
+	if SWIPE_TO_SCROLL then
+		local lastTap = 0
+		SlotFrame.MouseButton1Click:connect(function()
+			local now = tick()
+			if slot.Tool and slot.Index > HOTBAR_SLOTS and now - lastTap < DOUBLE_CLICK_TIME and LowestEmptySlot then
+				local myTool = slot.Tool
+				slot:Clear()
+				LowestEmptySlot:Fill(myTool)
+				slot:Delete()
+				now = 0
+			end
+			lastTap = now
+		end)
+	end
+]] },
+	}
+
+	local CHAT_CHANGES = {
+		-- no top bar: the dot before each name, the Chat button, the darker
+		-- box while you type
+		{ "\treturn true\nend\n\nlocal function GetChatMovedUpPlaceIdCutoffFlag",
+			"\treturn false\nend\n\nlocal function GetChatMovedUpPlaceIdCutoffFlag" },
+		-- the top bar used to show the chat window
+		{ "\t\t--SetVisbility(true)", "\t\tSetVisbility(true)" },
+		-- "/" still starts typing on PC
+		{ "\t\t\tif GetTopBarFlag() then\n\t\t\t\tif true then", "\t\t\tif true then\n\t\t\t\tif true then" },
+		-- PC chat bar right under the chat window (on phones it stays hidden)
+		{ "\t\t\tName = 'ChatBarContainer';\n\t\t\tPosition = UDim2.new(0, 0, 1, 0);\n\t\t\tSize = UDim2.new(1, 0, 0, 20);",
+			"\t\t\tName = 'ChatBarContainer';\n\t\t\tPosition = Util.IsTouchDevice() and UDim2.new(0, 0, 1, 0) or UDim2.new(0, 8, 0.25, 2);\n\t\t\tSize = Util.IsTouchDevice() and UDim2.new(1, 0, 0, 20) or UDim2.new(0.3, -8, 0, 20);" },
+		{ "Please press the '...' icon to chat", "Please press the Chat button to chat" },
+	}
 
 	local function find(obj, ...)
 		for _, name in ipairs({ ... }) do
@@ -195,27 +247,19 @@ do
 		return string.sub(text, 1, a - 1) .. new .. string.sub(text, b + 1)
 	end
 
-	-- Legacy's 2015 backpack with the top bar off: arrow above the hotbar,
-	-- hotbar moved up for the health bar
-	local function early2015Backpack(source)
-		local header = string.match(source, HEADER)
-		local body = header and replaceOnce(string.sub(source, #header + 1),
-			"local TopBarEnabled = true", "local TopBarEnabled = false")
-		return body and replaceOnce(body, "\t\tarrowFrame.Parent = MainFrame",
-			ARROW_BUTTON .. "\t\tarrowFrame.Parent = MainFrame")
-	end
-
-	-- the 2014 GUI starts its backpack from BackpackLoader: run the 2015
-	-- backpack there instead, so the 2014 one never gets built
-	local function swapBackpack(legacy)
-		local gui = find(legacy, "Core", "2014", "NewRobloxGui")
-		local loader = find(gui, "BackpackLoader")
-		local backpack2015 = find(legacy, "Core", "2015", "NewRobloxGui", "Modules", "BackpackScript")
-		local header = loader and string.match(loader.Source, HEADER)
-		local body = backpack2015 and early2015Backpack(backpack2015.Source)
-		if not (header and body) then return nil end
-		loader.Source = header .. body
-		return gui
+	-- run a 2015 script in place of a 2014 one, with the changes made;
+	-- nothing happens if Legacy changed any of those lines
+	local function swap(script2014, script2015, changes)
+		local header = script2014 and string.match(script2014.Source, HEADER)
+		local header2015 = script2015 and string.match(script2015.Source, HEADER)
+		if not (header and header2015) then return false end
+		local body = string.sub(script2015.Source, #header2015 + 1)
+		for _, change in ipairs(changes) do
+			body = replaceOnce(body, change[1], change[2])
+			if not body then return false end
+		end
+		script2014.Source = header .. body
+		return true
 	end
 
 	local function fixGui(gui)
@@ -236,13 +280,20 @@ do
 			options = options or {}
 			options.debug = true
 			local legacy = suite.launch(path, options)
-			local ok, gui = pcall(swapBackpack, legacy)
-			if ok and gui then
+			local ok, err = pcall(function()
+				local gui = find(legacy, "Core", "2014", "NewRobloxGui")
+				local modules = find(legacy, "Core", "2015", "NewRobloxGui", "Modules")
+				if not swap(find(gui, "BackpackLoader"), find(modules, "BackpackScript"), BACKPACK_CHANGES) then
+					warn("[Early 2015] Couldn't swap in the 2015 backpack (Legacy changed), using the 2014 one.")
+					return
+				end
+				if not swap(find(gui, "ChatScript"), find(modules, "Chat"), CHAT_CHANGES) then
+					warn("[Early 2015] Couldn't swap in the 2015 chat (Legacy changed), using the 2014 one.")
+				end
 				fixGui(gui)
-				print("[Early 2015] 2015 backpack swapped in, menus fixed.")
-			else
-				warn("[Early 2015] Couldn't swap in the 2015 backpack: " .. (ok and "Legacy changed" or tostring(gui)))
-			end
+				print("[Early 2015] 2015 backpack and chat swapped in, menus fixed.")
+			end)
+			if not ok then warn("[Early 2015] " .. tostring(err)) end
 			return legacy
 		end,
 	}, { __index = suite })
