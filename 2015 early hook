@@ -10,7 +10,9 @@
 --    the hotbar)
 --    the hotbar slots go solid while the inventory is open
 --    chat lines with a colored dot before "[name]:", the gray Chat button,
---    and a darker box behind the chat while you type
+--    and a darker box behind the chat while you type, lined up with the
+--    menu button (phones have no "click here to chat" bar, only PC does)
+--    early 2015 chat bubbles: see-through white, small round corners
 -- Fixes kept from the "2014 gui fix":
 --    the dark background behind the menus covers the whole screen (it left
 --    strips at the sides on phones) and goes above the leaderboard, chat and
@@ -228,9 +230,17 @@ do
 		{ "\t\t--SetVisbility(true)", "\t\tSetVisbility(true)" },
 		-- "/" still starts typing on PC
 		{ "\t\t\tif GetTopBarFlag() then\n\t\t\t\tif true then", "\t\t\tif true then\n\t\t\t\tif true then" },
-		-- PC chat bar right under the chat window (on phones it stays hidden)
+		-- chat box lined up with the menu button (2px from the left)
+		{ "\t\t\tName = 'ChatWindowContainer';\n\t\t\tSize = UDim2.new(0.3, 0, 0.25, 0);\n\t\t\tPosition = UDim2.new(0, 8, 0, 37);",
+			"\t\t\tName = 'ChatWindowContainer';\n\t\t\tSize = UDim2.new(0.3, 0, 0.25, 0);\n\t\t\tPosition = UDim2.new(0, 2, 0, 37);" },
+		-- PC chat bar right under the chat box; phones have no chat bar
+		-- (no strip or "click here" text at the bottom), the keyboard is it
 		{ "\t\t\tName = 'ChatBarContainer';\n\t\t\tPosition = UDim2.new(0, 0, 1, 0);\n\t\t\tSize = UDim2.new(1, 0, 0, 20);",
-			"\t\t\tName = 'ChatBarContainer';\n\t\t\tPosition = Util.IsTouchDevice() and UDim2.new(0, 0, 1, 0) or UDim2.new(0, 8, 0.25, 2);\n\t\t\tSize = Util.IsTouchDevice() and UDim2.new(1, 0, 0, 20) or UDim2.new(0.3, -8, 0, 20);" },
+			"\t\t\tName = 'ChatBarContainer';\n\t\t\tPosition = Util.IsTouchDevice() and UDim2.new(0, 0, 1, 0) or UDim2.new(0, 2, 0.25, 2);\n\t\t\tSize = Util.IsTouchDevice() and UDim2.new(1, 0, 0, 20) or UDim2.new(0.3, -2, 0, 20);" },
+		{ "\t\t\tBackgroundColor3 = Color3.new(0, 0, 0);\n\t\t\tBackgroundTransparency = 0.25;",
+			"\t\t\tBackgroundColor3 = Color3.new(0, 0, 0);\n\t\t\tBackgroundTransparency = Util.IsTouchDevice() and 1 or 0.25;" },
+		{ "Text = 'To chat click here or press \"/\" key';",
+			"Text = Util.IsTouchDevice() and '' or 'To chat click here or press \"/\" key';" },
 		{ "Please press the '...' icon to chat", "Please press the Chat button to chat" },
 	}
 
@@ -300,7 +310,7 @@ do
 end
 
 ------------------------------------------------------------
--- LOAD THE 2014 BASE (loading screen, bubbles, Leave Game button, Legacy)
+-- LOAD THE 2014 BASE (loading screen, Leave Game button, Legacy)
 ------------------------------------------------------------
 do
 	-- a GUI picked earlier can leave its year here, and the base would
@@ -309,5 +319,105 @@ do
 	if settings and settings.Year ~= 2014 then
 		getgenv().LegacySettings = nil
 	end
-	loadstring(game:HttpGet("https://pastebin.com/raw/h5AEhK7N"))()
+
+	-- the base draws 2012 bubbles; draw early 2015's instead: see-through
+	-- white, small round corners, dark gray SourceSans text, a small tail
+	local BUBBLE_2015 = [[
+local function createClassicBubble(head, messageText)
+	if not head or not head:IsA("BasePart") then return end
+
+	for _, child in ipairs(head:GetChildren()) do
+		if child.Name == "ClassicBubbleGui" then
+			child:Destroy()
+		end
+	end
+
+	local FILL = 0.3 -- see-through
+	local TAIL_W, TAIL_H = 25, 10
+	local textSize = TextService:GetTextSize(messageText, 22, Enum.Font.SourceSans, Vector2.new(220, 1000))
+	local width = math.max(textSize.X + 50, 70)
+	local height = textSize.Y + 28
+	local smallWidth, smallHeight = 46, 35
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "ClassicBubbleGui"
+	billboard.Adornee = head
+	billboard.StudsOffset = Vector3.new(0, 2.5, 0)
+	billboard.SizeOffset = Vector2.new(0, 0.5)
+	billboard.AlwaysOnTop = false
+	billboard.MaxDistance = MAX_VISIBILITY_DISTANCE
+
+	local body = Instance.new("Frame")
+	body.Name = "BubbleBody"
+	body.BackgroundColor3 = Color3.new(1, 1, 1)
+	body.BackgroundTransparency = FILL
+	body.BorderSizePixel = 0
+	body.Parent = billboard
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 5)
+	corner.Parent = body
+
+	local tail = Instance.new("ImageLabel")
+	tail.Name = "BubbleTail"
+	tail.BackgroundTransparency = 1
+	tail.Image = "rbxassetid://89395716827984"
+	tail.ImageTransparency = FILL
+	tail.Size = UDim2.new(0, TAIL_W, 0, TAIL_H)
+	tail.Parent = billboard
+
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.SourceSans
+	label.TextSize = 22
+	label.TextColor3 = Color3.fromRGB(60, 68, 75)
+	label.TextWrapped = true
+	label.Size = UDim2.new(1, 0, 1, 0)
+	label.Parent = body
+
+	local function layout(w, h, text)
+		billboard.Size = UDim2.new(0, w, 0, h + TAIL_H)
+		body.Size = UDim2.new(1, 0, 0, h)
+		tail.Position = UDim2.new(0.5, -TAIL_W / 2, 0, h)
+		label.Text = text
+	end
+	layout(width, height, messageText)
+	billboard.Parent = head
+
+	-- far away it shrinks to "...", like the base's bubbles
+	local far = false
+	local renderConnection
+	renderConnection = RunService.RenderStepped:Connect(function()
+		if not billboard.Parent or not workspace.CurrentCamera then
+			renderConnection:Disconnect()
+			return
+		end
+		local nowFar = (workspace.CurrentCamera.CFrame.Position - head.Position).Magnitude > ZOOM_THRESHOLD
+		if nowFar ~= far then
+			far = nowFar
+			if far then
+				layout(smallWidth, smallHeight, "...")
+			else
+				layout(width, height, messageText)
+			end
+		end
+	end)
+
+	task.delay(BUBBLE_LIFETIME, function()
+		renderConnection:Disconnect()
+		if billboard.Parent then
+			billboard:Destroy()
+		end
+	end)
+end
+]]
+
+	local base = game:HttpGet("https://pastebin.com/raw/h5AEhK7N")
+	local a = string.find(base, "local function createClassicBubble(head, messageText)", 1, true)
+	local b = string.find(base, "\nlocal function handleBubbleSpawn(player, text)", 1, true)
+	if a and b and a < b then
+		base = string.sub(base, 1, a - 1) .. BUBBLE_2015 .. string.sub(base, b)
+	else
+		warn("[Early 2015] Couldn't swap in the 2015 chat bubbles, using the base's.")
+	end
+	loadstring(base)()
 end
