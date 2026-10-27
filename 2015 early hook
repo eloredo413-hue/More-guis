@@ -1,7 +1,7 @@
 -- [[ 2015 EARLY HOOK (mobile and PC) ]]
 -- Early 2015 is the 2014 GUI with Roblox's 2015 backpack and chat, before
 -- the dark top bar came in late 2015. This loads the 2014 GUI (menu,
--- health) and runs Legacy's own 2015 backpack, chat and leaderboard in
+-- health, leaderboard) and runs Legacy's own 2015 backpack and chat in
 -- place of the 2014 ones, set up the way they were without the top bar:
 --    60px hotbar slots above the health bar (3 on phones, 10 on PC)
 --    the arrow above the hotbar opens the inventory: "Search" on top, then
@@ -13,7 +13,6 @@
 --    and a darker box behind the chat while you type, lined up with the
 --    menu button (phones have no "click here to chat" bar, only PC does)
 --    early 2015 chat bubbles: see-through white, small round corners
---    the 2015 leaderboard (shown on phones too, Tab toggles it on PC)
 --    a Volume slider in Settings > Game Settings, like the 2015 settings
 -- Fixes kept from the "2014 gui fix":
 --    the dark background behind the menus covers the whole screen (it left
@@ -221,9 +220,11 @@ do
 		end)
 	end
 ]] },
-		-- phones: hold a tool for a moment, then drag it onto the hotbar. The
-		-- drag runs the backpack's own drag start / drop code, so it lands
-		-- the same way a PC drag does.
+		-- phones: drag a tool onto the hotbar. If the list is long enough to
+		-- scroll, an up/down swipe scrolls it and a sideways drag (or a short
+		-- hold) picks the tool up; otherwise any drag picks it up. The drag runs
+		-- the backpack's own drag start / drop code, so it lands the same way
+		-- a PC drag does.
 		{ "\t\tSlotFrame.DragBegin:connect(function(dragPoint)", "\t\tlocal function onDragBegin(dragPoint)" },
 		{ "\t\t\tend\n\t\tend)\n\n\t\tSlotFrame.DragStopped:connect(function(x, y)",
 			"\t\t\tend\n\t\tend\n\t\tSlotFrame.DragBegin:connect(onDragBegin)\n\n\t\tlocal function onDragStopped(x, y)" },
@@ -233,19 +234,34 @@ do
 		SlotFrame.DragStopped:connect(onDragStopped)
 
 		if SWIPE_TO_SCROLL then
-			local HOLD_TIME, SWIPE_DISTANCE = 0.3, 10
+			local HOLD_TIME, MOVE_DISTANCE = 0.3, 8
 			SlotFrame.InputBegan:connect(function(input)
 				if input.UserInputType ~= Enum.UserInputType.Touch or SlotFrame.Draggable or not slot.Tool or next(Dragging) then return end
 				local start = input.Position
-				local swiped, holding, released, base = false, false, false, nil
+				local scrolling, dragging, released, base = false, false, false, nil
 				local moveConn, endConn
+
+				local function pickUp(delta)
+					if dragging or scrolling or released or not slot.Tool or next(Dragging) then return end
+					dragging = true
+					ScrollingFrame.ScrollingEnabled = false
+					onDragBegin(SlotFrame.Position)
+					base = SlotFrame.Position
+					SlotFrame.Position = base + UDim2.new(0, delta.X, 0, delta.Y)
+				end
+
 				moveConn = UserInputService.InputChanged:connect(function(changed)
 					if changed ~= input then return end
 					local delta = changed.Position - start
-					if holding then
+					if dragging then
 						SlotFrame.Position = base + UDim2.new(0, delta.X, 0, delta.Y)
-					elseif delta.magnitude > SWIPE_DISTANCE then
-						swiped = true -- a swipe scrolls the list
+					elseif not scrolling and delta.magnitude > MOVE_DISTANCE then
+						local canScroll = ScrollingFrame.CanvasSize.Y.Offset > ScrollingFrame.AbsoluteWindowSize.Y
+						if canScroll and math.abs(delta.Y) > math.abs(delta.X) then
+							scrolling = true
+						else
+							pickUp(delta)
+						end
 					end
 				end)
 				endConn = UserInputService.InputEnded:connect(function(ended)
@@ -253,22 +269,15 @@ do
 					released = true
 					moveConn:disconnect()
 					endConn:disconnect()
-					if holding then
-						holding = false
+					if dragging then
+						dragging = false
 						ScrollingFrame.ScrollingEnabled = true
 						local center = SlotFrame.AbsolutePosition + SlotFrame.AbsoluteSize / 2
 						onDragStopped(center.X, center.Y)
-						-- the lift isn't a tap: don't let it equip the tool
-						delay(0, function() pcall(function() SlotFrame.Interactable = true end) end)
 					end
 				end)
 				delay(HOLD_TIME, function()
-					if swiped or released or not slot.Tool then return end
-					holding = true
-					ScrollingFrame.ScrollingEnabled = false
-					pcall(function() SlotFrame.Interactable = false end)
-					onDragBegin(SlotFrame.Position)
-					base = SlotFrame.Position
+					pickUp(Vector3.new(0, 0, 0))
 				end)
 			end)
 		end
@@ -301,12 +310,6 @@ do
 		-- need to press the Chat button
 		{ "\t\t\t\t\t\t\t\ttouchCount = touchCount + 1\n\t\t\t\t\t\t\t\tdontFadeOutOnMouseLeave = true",
 			"\t\t\t\t\t\t\t\ttouchCount = touchCount + 1\n\t\t\t\t\t\t\t\tdontFadeOutOnMouseLeave = true\n\t\t\t\t\t\t\t\tif not this.BackgroundVisible then this:FadeIn(0.25) end" },
-	}
-
-	local LEADERBOARD_CHANGES = {
-		-- 2015 hid it on phones; the 2014 GUI shows its leaderboard there, keep that
-		{ "local IsSmallScreenDevice = UserInputService.TouchEnabled and GuiService:GetScreenResolution().Y <= 500",
-			"local IsSmallScreenDevice = false" },
 	}
 
 	-- changes to the 2014 settings script itself
@@ -411,15 +414,12 @@ do
 				if not swap(find(gui, "ChatScript"), find(modules, "Chat"), CHAT_CHANGES) then
 					warn("[Early 2015] Couldn't swap in the 2015 chat (Legacy changed), using the 2014 one.")
 				end
-				if not swap(find(gui, "PlayerListScript"), find(modules, "PlayerlistModule"), LEADERBOARD_CHANGES) then
-					warn("[Early 2015] Couldn't swap in the 2015 leaderboard (Legacy changed), using the 2014 one.")
-				end
 				local settingsScript = find(gui, "Settings")
 				if not swap(settingsScript, settingsScript, SETTINGS_CHANGES) then
 					warn("[Early 2015] Couldn't add the volume slider (Legacy changed).")
 				end
 				fixGui(gui)
-				print("[Early 2015] 2015 backpack, chat and leaderboard swapped in, volume added, menus fixed.")
+				print("[Early 2015] 2015 backpack and chat swapped in, volume added, menus fixed.")
 			end)
 			if not ok then warn("[Early 2015] " .. tostring(err)) end
 			return legacy
