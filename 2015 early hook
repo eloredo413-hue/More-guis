@@ -1,0 +1,262 @@
+-- [[ 2015 EARLY HOOK (mobile and PC) ]]
+-- Early 2015 is the 2014 GUI with Roblox's 2015 backpack, before the dark
+-- top bar came in late 2015. This loads the 2014 GUI (menu, chat, health,
+-- leaderboard) and swaps its backpack for Legacy's own 2015 one, set up the
+-- way it was without the top bar:
+--    60px hotbar slots above the health bar (3 on phones, 10 on PC)
+--    the arrow above the hotbar opens the inventory: "Search" on top, then
+--    the tools that aren't on the hotbar; drag them onto the hotbar
+--    the hotbar slots go solid while the inventory is open
+-- Fixes kept from the "2014 gui fix":
+--    the dark background behind the menus covers the whole screen (it left
+--    strips at the sides on phones) and goes above the leaderboard, chat and
+--    menu button, with the open menu on top
+--    other backpacks / hotbars (from the game or other scripts) get hidden,
+--    and this one stays on even if the game turns the backpack off
+-- Pick it as "2015 early" in the GUI list (More gui fix), or run it on its own.
+
+do
+	local Players = game:GetService("Players")
+	local CoreGui = game:GetService("CoreGui")
+	local player = Players.LocalPlayer
+
+	------------------------------------------------------------
+	-- MENU BACKGROUND: the 2014 GUI only fills the phone's safe area, so the
+	-- dark shield behind its menus (settings, report abuse, help...) left
+	-- strips uncovered, and the leaderboard / chat / menu button showed on
+	-- top of it. Draw it over the whole screen above those, menu on top.
+	------------------------------------------------------------
+	local MENU_BACKGROUND_Z = 9 -- above the leaderboard (8), chat and menu button
+	local MENU_LIFT = 10 -- the open menu goes this much higher, above the background
+	local lifted = setmetatable({}, { __mode = "k" })
+	local shields = setmetatable({}, { __mode = "k" })
+
+	-- keep a menu piece above the background, even if its script changes its ZIndex
+	local function liftMenuPiece(obj)
+		if not obj:IsA("GuiObject") or lifted[obj] then return end
+		lifted[obj] = true
+		local expected = obj.ZIndex + MENU_LIFT
+		obj.ZIndex = expected
+		obj:GetPropertyChangedSignal("ZIndex"):Connect(function()
+			if obj.ZIndex ~= expected then
+				expected = obj.ZIndex + MENU_LIFT
+				obj.ZIndex = expected
+			end
+		end)
+	end
+
+	local function fixShield(shield, gui)
+		if shields[shield] or lifted[shield] then return end
+		shields[shield] = true
+
+		-- way bigger than the screen so it covers past the safe area and padding
+		local background = Instance.new("Frame")
+		background.Name = shield.Name .. "Background"
+		background.BorderSizePixel = 0
+		background.Position = UDim2.new(0, -2000, 0, -2000)
+		background.Size = UDim2.new(1, 4000, 1, 4000)
+		background.BackgroundColor3 = shield.BackgroundColor3
+		background.BackgroundTransparency = shield.BackgroundTransparency
+		background.ZIndex = MENU_BACKGROUND_Z
+		background.Visible = false
+		background.Parent = gui
+
+		-- the shield keeps blocking taps, it just doesn't draw anymore
+		local function takeLook()
+			if shield.BackgroundTransparency < 1 then
+				background.BackgroundColor3 = shield.BackgroundColor3
+				background.BackgroundTransparency = shield.BackgroundTransparency
+				shield.BackgroundTransparency = 1
+			end
+		end
+		takeLook()
+		shield:GetPropertyChangedSignal("BackgroundTransparency"):Connect(takeLook)
+
+		-- the menu itself goes above the background
+		liftMenuPiece(shield)
+		for _, d in ipairs(shield:GetDescendants()) do liftMenuPiece(d) end
+		shield.DescendantAdded:Connect(liftMenuPiece)
+
+		local function update()
+			background.Visible = shield.Visible and shield:IsDescendantOf(gui)
+		end
+		shield:GetPropertyChangedSignal("Visible"):Connect(update)
+		shield.AncestryChanged:Connect(function()
+			if shield:IsDescendantOf(game) then
+				update()
+			else
+				background:Destroy()
+			end
+		end)
+		update()
+	end
+
+	local function fixMenus(gui)
+		-- let the background draw outside the safe area
+		pcall(function() gui.ClipToDeviceSafeArea = false end)
+		-- every full-screen shield the 2014 menus use ends in "Shield"
+		-- (UserSettingsShield, ReportAbuseShield, HelpDialogShield, ...)
+		local function check(obj)
+			if obj:IsA("GuiObject") and string.match(obj.Name, "Shield$") then
+				fixShield(obj, gui)
+			end
+		end
+		for _, d in ipairs(gui:GetDescendants()) do check(d) end
+		gui.DescendantAdded:Connect(check)
+	end
+
+	------------------------------------------------------------
+	-- ONLY THIS BACKPACK: hide custom backpacks / hotbars / inventories
+	-- (ScreenGuis, or frames right inside one, with those words in the name)
+	-- and keep this one on when the game switches the backpack off
+	------------------------------------------------------------
+	local CUSTOM_WORDS = { "backpack", "inventory", "hotbar", "toolbar", "loadout", "satchel" }
+	local ROBLOX_GUIS = { NewRobloxGui = true, RobloxGui = true, TopBarApp = true }
+	local hidden = setmetatable({}, { __mode = "k" })
+
+	local function isCustomInventory(obj)
+		local root = obj:IsA("ScreenGui") and obj or obj.Parent
+		if not (root and root:IsA("ScreenGui")) or ROBLOX_GUIS[root.Name] then return false end
+		local name = obj.Name:lower()
+		for _, word in ipairs(CUSTOM_WORDS) do
+			if string.find(name, word, 1, true) then return true end
+		end
+		return false
+	end
+
+	local function hideCustom(obj)
+		if hidden[obj] then return end
+		local ok, custom = pcall(isCustomInventory, obj)
+		if not (ok and custom) then return end
+		local prop = obj:IsA("ScreenGui") and "Enabled" or (obj:IsA("GuiObject") and "Visible")
+		if not prop then return end
+		hidden[obj] = true
+		obj[prop] = false
+		-- it stays hidden if the game tries to show it again
+		obj:GetPropertyChangedSignal(prop):Connect(function()
+			if obj[prop] then obj[prop] = false end
+		end)
+	end
+
+	local hidingStarted = false
+	local function hideCustomInventories()
+		if hidingStarted then return end
+		hidingStarted = true
+		task.spawn(function()
+			local playerGui = player:WaitForChild("PlayerGui", 30)
+			for _, container in ipairs({ playerGui or false, CoreGui }) do
+				if container then
+					for _, d in ipairs(container:GetDescendants()) do hideCustom(d) end
+					container.DescendantAdded:Connect(hideCustom)
+				end
+			end
+		end)
+	end
+
+	local function keepBackpackOn(gui)
+		-- Legacy turns the backpack off when the game disables Roblox's
+		local function on()
+			if gui:GetAttribute("BackpackEnabled") == false then
+				gui:SetAttribute("BackpackEnabled", true)
+			end
+		end
+		gui:GetAttributeChangedSignal("BackpackEnabled"):Connect(on)
+		on()
+	end
+
+	------------------------------------------------------------
+	-- 2015 BACKPACK: the 2014 base loads Legacy through RBXMSuite. Hand it
+	-- a copy whose launch swaps the 2014 GUI's backpack for the 2015 one
+	-- before the GUI starts, then fixes the GUI.
+	------------------------------------------------------------
+	local SUITE_URL = "https://raw.githubusercontent.com/yeku/forks/refs/heads/main/Scripts/RBXMSuite.luau"
+	-- RBXMSuite's debug mode starts each script's Source with this, and loads
+	-- the Source when the script is first required (so a swap before that counts)
+	local HEADER = "^local script, require = unpack%b(); "
+
+	-- without the top bar the arrow is what opens the inventory, so it takes taps
+	local ARROW_BUTTON = [[
+		local arrowButton = NewGui('TextButton', 'Button')
+		arrowButton.BorderSizePixel = 0
+		arrowButton.Parent = arrowFrame
+		arrowButton.MouseButton1Click:connect(openClose)
+]]
+
+	local function find(obj, ...)
+		for _, name in ipairs({ ... }) do
+			obj = obj and obj:FindFirstChild(name)
+		end
+		return obj
+	end
+
+	local function replaceOnce(text, old, new)
+		local a, b = string.find(text, old, 1, true)
+		if not a or string.find(text, old, b + 1, true) then return nil end
+		return string.sub(text, 1, a - 1) .. new .. string.sub(text, b + 1)
+	end
+
+	-- Legacy's 2015 backpack with the top bar off: arrow above the hotbar,
+	-- hotbar moved up for the health bar
+	local function early2015Backpack(source)
+		local header = string.match(source, HEADER)
+		local body = header and replaceOnce(string.sub(source, #header + 1),
+			"local TopBarEnabled = true", "local TopBarEnabled = false")
+		return body and replaceOnce(body, "\t\tarrowFrame.Parent = MainFrame",
+			ARROW_BUTTON .. "\t\tarrowFrame.Parent = MainFrame")
+	end
+
+	-- the 2014 GUI starts its backpack from BackpackLoader: run the 2015
+	-- backpack there instead, so the 2014 one never gets built
+	local function swapBackpack(legacy)
+		local gui = find(legacy, "Core", "2014", "NewRobloxGui")
+		local loader = find(gui, "BackpackLoader")
+		local backpack2015 = find(legacy, "Core", "2015", "NewRobloxGui", "Modules", "BackpackScript")
+		local header = loader and string.match(loader.Source, HEADER)
+		local body = backpack2015 and early2015Backpack(backpack2015.Source)
+		if not (header and body) then return nil end
+		loader.Source = header .. body
+		return gui
+	end
+
+	local function fixGui(gui)
+		keepBackpackOn(gui)
+		hideCustomInventories()
+		fixMenus(gui)
+	end
+
+	local env = getgenv()
+	local previous = env.Suite
+	local suite = previous or loadstring(game:HttpGet(SUITE_URL))()
+	env.Suite = setmetatable({
+		launch = function(path, options)
+			if type(path) ~= "string" or not string.find(path, "Legacy", 1, true) then
+				return suite.launch(path, options)
+			end
+			env.Suite = previous -- only this launch gets the swap
+			options = options or {}
+			options.debug = true
+			local legacy = suite.launch(path, options)
+			local ok, gui = pcall(swapBackpack, legacy)
+			if ok and gui then
+				fixGui(gui)
+				print("[Early 2015] 2015 backpack swapped in, menus fixed.")
+			else
+				warn("[Early 2015] Couldn't swap in the 2015 backpack: " .. (ok and "Legacy changed" or tostring(gui)))
+			end
+			return legacy
+		end,
+	}, { __index = suite })
+end
+
+------------------------------------------------------------
+-- LOAD THE 2014 BASE (loading screen, bubbles, Leave Game button, Legacy)
+------------------------------------------------------------
+do
+	-- a GUI picked earlier can leave its year here, and the base would
+	-- load that year instead of its own (2014)
+	local settings = getgenv().LegacySettings
+	if settings and settings.Year ~= 2014 then
+		getgenv().LegacySettings = nil
+	end
+	loadstring(game:HttpGet("https://pastebin.com/raw/h5AEhK7N"))()
+end
