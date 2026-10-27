@@ -1,0 +1,45 @@
+-- [[ 2017 LEGACY LIGHTING ]]
+-- The "OldGraphics" lighting from the 2017 Legacy GUI (Year = 2017,
+-- OldGraphics = true), on its own so it can run without the GUI:
+--    Lighting.Technology goes to Compatibility (needs sethiddenproperty)
+--    depth of field, sun rays, bloom, blur and color correction effects
+--    already in Lighting get turned off and stay off; Atmosphere is removed
+--    a flat color correction is added: no saturation, a bit less contrast
+
+do
+	local Lighting = game:GetService("Lighting")
+
+	-- Sets a property and puts it back whenever the game changes it
+	local function force(object, property, value)
+		if object[property] ~= value then
+			object[property] = value
+		end
+		object:GetPropertyChangedSignal(property):Connect(function()
+			if object[property] ~= value then
+				object[property] = value
+			end
+		end)
+	end
+
+	if sethiddenproperty then
+		task.spawn(sethiddenproperty, Lighting, "Technology", Enum.Technology.Compatibility)
+	end
+
+	for _, effect in next, Lighting:QueryDescendants(
+		"> DepthOfFieldEffect, > SunRaysEffect, > BloomEffect, > BlurEffect, > ColorCorrectionEffect, > Atmosphere"
+	) do
+		if effect:IsA("Atmosphere") then
+			effect:Destroy()
+		else
+			force(effect, "Enabled", false)
+		end
+	end
+
+	-- The 2017 GUI also makes a ColorGradingEffect (TonemapperPreset Retro)
+	-- but never parents it, so it never shows; it's left out here.
+
+	local correction = Instance.new("ColorCorrectionEffect")
+	correction.Saturation = 0
+	correction.Contrast = -0.1
+	correction.Parent = Lighting
+end
