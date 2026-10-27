@@ -469,9 +469,9 @@ task.spawn(function()
 
 					task.wait(0.1)
 
-					-- STEP 6: Insert 2015 early (under 2015). It's the
-					-- "2014" GUI (really early 2015) with its fixes, so it
-					-- rides on the 2014 button.
+					-- STEP 6: Insert 2015 early (under 2015). It's the 2014
+					-- GUI with the 2015 backpack, so it rides on the 2014
+					-- button.
 					if not findButton(slider, "2015 early") then
 						local btn2014 = findButton(slider, "2014")
 						local anchor = findButton(slider, "2015") or findNewerAnchor(slider, 2015)
