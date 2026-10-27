@@ -219,6 +219,59 @@ do
 		end)
 	end
 ]] },
+		-- phones: hold a tool for a moment, then drag it onto the hotbar. The
+		-- drag runs the backpack's own drag start / drop code, so it lands
+		-- the same way a PC drag does.
+		{ "\t\tSlotFrame.DragBegin:connect(function(dragPoint)", "\t\tlocal function onDragBegin(dragPoint)" },
+		{ "\t\t\tend\n\t\tend)\n\n\t\tSlotFrame.DragStopped:connect(function(x, y)",
+			"\t\t\tend\n\t\tend\n\t\tSlotFrame.DragBegin:connect(onDragBegin)\n\n\t\tlocal function onDragStopped(x, y)" },
+		{ "\t\t\tlastUpTime = now\n\t\tend)\n\tend\n", [[
+			lastUpTime = now
+		end
+		SlotFrame.DragStopped:connect(onDragStopped)
+
+		if SWIPE_TO_SCROLL then
+			local HOLD_TIME, SWIPE_DISTANCE = 0.3, 10
+			SlotFrame.InputBegan:connect(function(input)
+				if input.UserInputType ~= Enum.UserInputType.Touch or SlotFrame.Draggable or not slot.Tool or next(Dragging) then return end
+				local start = input.Position
+				local swiped, holding, released, base = false, false, false, nil
+				local moveConn, endConn
+				moveConn = UserInputService.InputChanged:connect(function(changed)
+					if changed ~= input then return end
+					local delta = changed.Position - start
+					if holding then
+						SlotFrame.Position = base + UDim2.new(0, delta.X, 0, delta.Y)
+					elseif delta.magnitude > SWIPE_DISTANCE then
+						swiped = true -- a swipe scrolls the list
+					end
+				end)
+				endConn = UserInputService.InputEnded:connect(function(ended)
+					if ended ~= input then return end
+					released = true
+					moveConn:disconnect()
+					endConn:disconnect()
+					if holding then
+						holding = false
+						ScrollingFrame.ScrollingEnabled = true
+						local center = SlotFrame.AbsolutePosition + SlotFrame.AbsoluteSize / 2
+						onDragStopped(center.X, center.Y)
+						-- the lift isn't a tap: don't let it equip the tool
+						delay(0, function() pcall(function() SlotFrame.Interactable = true end) end)
+					end
+				end)
+				delay(HOLD_TIME, function()
+					if swiped or released or not slot.Tool then return end
+					holding = true
+					ScrollingFrame.ScrollingEnabled = false
+					pcall(function() SlotFrame.Interactable = false end)
+					onDragBegin(SlotFrame.Position)
+					base = SlotFrame.Position
+				end)
+			end)
+		end
+	end
+]] },
 	}
 
 	local CHAT_CHANGES = {
@@ -242,6 +295,10 @@ do
 		{ "Text = 'To chat click here or press \"/\" key';",
 			"Text = Util.IsTouchDevice() and '' or 'To chat click here or press \"/\" key';" },
 		{ "Please press the '...' icon to chat", "Please press the Chat button to chat" },
+		-- phones: tapping the chat box darkens it and lets you scroll, no
+		-- need to press the Chat button
+		{ "\t\t\t\t\t\t\t\ttouchCount = touchCount + 1\n\t\t\t\t\t\t\t\tdontFadeOutOnMouseLeave = true",
+			"\t\t\t\t\t\t\t\ttouchCount = touchCount + 1\n\t\t\t\t\t\t\t\tdontFadeOutOnMouseLeave = true\n\t\t\t\t\t\t\t\tif not this.BackgroundVisible then this:FadeIn(0.25) end" },
 	}
 
 	local function find(obj, ...)
