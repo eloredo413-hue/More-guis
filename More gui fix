@@ -1,4 +1,4 @@
--- [[ 2024 / 2023 / 2021 / 2019 / 2017 / 2013 MOBILE / 2006 / 2005 HOOKS + PLACEHOLDERS ]]
+-- [[ 2024 / 2023 / 2021 / 2019 / 2017 / 2015 EARLY / 2013 MOBILE / 2006 / 2005 HOOKS + PLACEHOLDERS ]]
 -- Run AFTER the main Bloxy Paradox script.
 
 ------------------------------------------------------------
@@ -17,11 +17,13 @@ do
 	local URL_2021      = "https://gist.githubusercontent.com/eloredo413-hue/46ee252aa3b7420b76431369e2d5e091/raw/02e4c126aecb5efa720a257e005aa319ac7fe43b/2021%2520gui"
 	local URL_2019      = "https://gist.githubusercontent.com/eloredo413-hue/2c867970649c45c8bf1eef42c7463787/raw/06e46c2ece7121a20c45728a86644d1d1e7b1e9d/2019%2520gui"
 	local URL_2017      = "https://gist.githubusercontent.com/eloredo413-hue/495540d2bae5557547d36718dd46bc95/raw/79c95e9a5b1733dd6d2cdb3d2731c04db41faa76/2017%2520gui"
+	local URL_2015EARLY = "https://raw.githubusercontent.com/eloredo413-hue/More-guis/main/Early%202015%20gui"
 	local URL_2013MOB   = "https://gist.githubusercontent.com/eloredo413-hue/36da5f0c6ada87039d9e69128abe47ff/raw/baa42b6049ea9c2859a4b748964520835b0ac44e/2013%2520Mobile%2520gui%2520fixed"
 	local URL_2006      = "https://gist.githubusercontent.com/eloredo413-hue/e4182150a8bb79c060e86cee0c8502a3/raw/7168e05ba30196189fcd612181d88bb718a45ddc/2006-2007%2520Gui"
 	local URL_2005      = "https://gist.githubusercontent.com/eloredo413-hue/7eca661bd68389b3fb2ec5b762b3fb7a/raw/17af25bbea489d0e47334f0f72b183421522536e/2005%2520gui"
 	local SIG_2023      = "111872120766790"
 	local SIG_2013      = "Year = 2013"
+	local SIG_2014      = "h5AEhK7N" -- the 2014 topbar's pastebin
 
 	local function fetchURL(url, label)
 		print("[" .. label .. "] Fetching...")
@@ -76,6 +78,13 @@ do
 				local src = fetchURL(URL_2017, "2017")
 				if src then return _ORIG_LS(src, name) end
 				return _ORIG_LS("-- [Hook] 2017 fetch failed", name)
+
+			elseif pending == "2015early" and code:find(SIG_2014, 1, true) then
+				getgenv().BP_PendingTopbar = nil
+				getgenv().BP_2023Variant = nil
+				local src = fetchURL(URL_2015EARLY, "2015 early")
+				if src then return _ORIG_LS(src, name) end
+				return _ORIG_LS("-- [Hook] 2015 early fetch failed", name)
 
 			elseif pending == "2013mobile" and code:find(SIG_2013, 1, true) then
 				getgenv().BP_PendingTopbar = nil
@@ -460,7 +469,39 @@ task.spawn(function()
 
 					task.wait(0.1)
 
-					-- STEP 6: Insert 2013 mobile
+					-- STEP 6: Insert 2015 early (under 2015). It's the
+					-- "2014" GUI (really early 2015) with its fixes, so it
+					-- rides on the 2014 button.
+					if not findButton(slider, "2015 early") then
+						local btn2014 = findButton(slider, "2014")
+						local anchor = findButton(slider, "2015") or findNewerAnchor(slider, 2015)
+						if btn2014 and anchor then
+							local clone = anchor:Clone()
+							clone.Name = "Topbar2015EarlyButton"
+							clone.Text = "2015 early"
+							clone.Position = UDim2.new(0, 0, 0, anchor.Position.Y.Offset + 35)
+							clone.Parent = slider
+
+							wipeHandlers(clone)
+							addHover(clone)
+
+							clone.MouseButton1Click:Connect(function()
+								playClick()
+								fireOriginal(btn2014)
+								getgenv().Force2008BubbleChat = false
+								getgenv().BP_PendingTopbar = "2015early"
+								getgenv().BP_2023Variant = nil
+								print("[2015 early] Selected — will load on confirm.")
+								updateToggle(frame, "2015 early")
+							end)
+
+							shiftDown(slider, anchor.Position.Y.Offset, 35, clone)
+						end
+					end
+
+					task.wait(0.1)
+
+					-- STEP 7: Insert 2013 mobile
 					if not findButton(slider, "2013 mobile") then
 						local anchor = findButton(slider, "2013")
 						if anchor then
@@ -489,7 +530,7 @@ task.spawn(function()
 
 					task.wait(0.1)
 
-					-- STEP 7: Insert 2006 (under the oldest year newer than it)
+					-- STEP 8: Insert 2006 (under the oldest year newer than it)
 					if not findButton(slider, "2006") then
 						local btn2013 = findButton(slider, "2013")
 						local anchor = findNewerAnchor(slider, 2006)
@@ -519,7 +560,7 @@ task.spawn(function()
 
 					task.wait(0.1)
 
-					-- STEP 8: Insert 2005
+					-- STEP 9: Insert 2005
 					if not findButton(slider, "2005") then
 						local btn2013 = findButton(slider, "2013")
 						local anchor = findButton(slider, "2006")
