@@ -1,7 +1,7 @@
 -- [[ 2015 EARLY HOOK (mobile and PC) ]]
 -- Early 2015 is the 2014 GUI with Roblox's 2015 backpack and chat, before
 -- the dark top bar came in late 2015. This loads the 2014 GUI (menu,
--- health, leaderboard) and runs Legacy's own 2015 backpack and chat in
+-- health) and runs Legacy's own 2015 backpack, chat and leaderboard in
 -- place of the 2014 ones, set up the way they were without the top bar:
 --    60px hotbar slots above the health bar (3 on phones, 10 on PC)
 --    the arrow above the hotbar opens the inventory: "Search" on top, then
@@ -13,6 +13,8 @@
 --    and a darker box behind the chat while you type, lined up with the
 --    menu button (phones have no "click here to chat" bar, only PC does)
 --    early 2015 chat bubbles: see-through white, small round corners
+--    the 2015 leaderboard (shown on phones too, Tab toggles it on PC)
+--    a Volume slider in Settings > Game Settings, like the 2015 settings
 -- Fixes kept from the "2014 gui fix":
 --    the dark background behind the menus covers the whole screen (it left
 --    strips at the sides on phones) and goes above the leaderboard, chat and
@@ -219,6 +221,59 @@ do
 		end)
 	end
 ]] },
+		-- phones: hold a tool for a moment, then drag it onto the hotbar. The
+		-- drag runs the backpack's own drag start / drop code, so it lands
+		-- the same way a PC drag does.
+		{ "\t\tSlotFrame.DragBegin:connect(function(dragPoint)", "\t\tlocal function onDragBegin(dragPoint)" },
+		{ "\t\t\tend\n\t\tend)\n\n\t\tSlotFrame.DragStopped:connect(function(x, y)",
+			"\t\t\tend\n\t\tend\n\t\tSlotFrame.DragBegin:connect(onDragBegin)\n\n\t\tlocal function onDragStopped(x, y)" },
+		{ "\t\t\tlastUpTime = now\n\t\tend)\n\tend\n", [[
+			lastUpTime = now
+		end
+		SlotFrame.DragStopped:connect(onDragStopped)
+
+		if SWIPE_TO_SCROLL then
+			local HOLD_TIME, SWIPE_DISTANCE = 0.3, 10
+			SlotFrame.InputBegan:connect(function(input)
+				if input.UserInputType ~= Enum.UserInputType.Touch or SlotFrame.Draggable or not slot.Tool or next(Dragging) then return end
+				local start = input.Position
+				local swiped, holding, released, base = false, false, false, nil
+				local moveConn, endConn
+				moveConn = UserInputService.InputChanged:connect(function(changed)
+					if changed ~= input then return end
+					local delta = changed.Position - start
+					if holding then
+						SlotFrame.Position = base + UDim2.new(0, delta.X, 0, delta.Y)
+					elseif delta.magnitude > SWIPE_DISTANCE then
+						swiped = true -- a swipe scrolls the list
+					end
+				end)
+				endConn = UserInputService.InputEnded:connect(function(ended)
+					if ended ~= input then return end
+					released = true
+					moveConn:disconnect()
+					endConn:disconnect()
+					if holding then
+						holding = false
+						ScrollingFrame.ScrollingEnabled = true
+						local center = SlotFrame.AbsolutePosition + SlotFrame.AbsoluteSize / 2
+						onDragStopped(center.X, center.Y)
+						-- the lift isn't a tap: don't let it equip the tool
+						delay(0, function() pcall(function() SlotFrame.Interactable = true end) end)
+					end
+				end)
+				delay(HOLD_TIME, function()
+					if swiped or released or not slot.Tool then return end
+					holding = true
+					ScrollingFrame.ScrollingEnabled = false
+					pcall(function() SlotFrame.Interactable = false end)
+					onDragBegin(SlotFrame.Position)
+					base = SlotFrame.Position
+				end)
+			end)
+		end
+	end
+]] },
 	}
 
 	local CHAT_CHANGES = {
@@ -242,6 +297,62 @@ do
 		{ "Text = 'To chat click here or press \"/\" key';",
 			"Text = Util.IsTouchDevice() and '' or 'To chat click here or press \"/\" key';" },
 		{ "Please press the '...' icon to chat", "Please press the Chat button to chat" },
+		-- phones: tapping the chat box darkens it and lets you scroll, no
+		-- need to press the Chat button
+		{ "\t\t\t\t\t\t\t\ttouchCount = touchCount + 1\n\t\t\t\t\t\t\t\tdontFadeOutOnMouseLeave = true",
+			"\t\t\t\t\t\t\t\ttouchCount = touchCount + 1\n\t\t\t\t\t\t\t\tdontFadeOutOnMouseLeave = true\n\t\t\t\t\t\t\t\tif not this.BackgroundVisible then this:FadeIn(0.25) end" },
+	}
+
+	local LEADERBOARD_CHANGES = {
+		-- 2015 hid it on phones; the 2014 GUI shows its leaderboard there, keep that
+		{ "local IsSmallScreenDevice = UserInputService.TouchEnabled and GuiService:GetScreenResolution().Y <= 500",
+			"local IsSmallScreenDevice = false" },
+	}
+
+	-- changes to the 2014 settings script itself
+	local SETTINGS_CHANGES = {
+		-- Game Settings: the 2015 volume slider, above OK (on PC, where the
+		-- graphics slider fills the page, OK moves down and the page grows)
+		{ "\tlocal backButton\n\tif hasGraphicsSlider then\n\t\tbackButton = createTextButton(\"OK\",Enum.ButtonStyle.RobloxRoundDefaultButton,Enum.FontSize.Size24,UDim2.new(0,180,0,50),UDim2.new(0,170,0,315))", [[
+	----------------------------------------------------------------------------------------------------
+	-- V O L U M E    S L I D E R   (from the 2015 settings)
+	----------------------------------------------------------------------------------------------------
+
+	local volumeTop = hasGraphicsSlider and 315 or itemTop + 10
+	local maxVolumeLevel = 256
+
+	local volumeText = Instance.new("TextLabel")
+	volumeText.Name = "VolumeText"
+	volumeText.Text = "Volume"
+	volumeText.Size = UDim2.new(0,224,0,18)
+	volumeText.Position = UDim2.new(0,31,0,volumeTop + 6)
+	volumeText.TextXAlignment = Enum.TextXAlignment.Left
+	volumeText.Font = Enum.Font.SourceSansBold
+	volumeText.FontSize = Enum.FontSize.Size18
+	volumeText.TextColor3 = Color3.new(1,1,1)
+	volumeText.ZIndex = baseZIndex + 4
+	volumeText.BackgroundTransparency = 1
+	volumeText.Parent = gameSettingsMenuFrame
+
+	local volumeSlider, volumeLevel = RbxGui.CreateSliderNew(maxVolumeLevel, 200, UDim2.new(0, 270, 0, volumeTop + 10))
+	for _, part in pairs(volumeSlider:GetDescendants()) do
+		if part:IsA("GuiObject") then part.ZIndex = baseZIndex + 4 end
+	end
+	volumeSlider.Bar.Slider.ZIndex = baseZIndex + 5
+	volumeSlider.Parent = gameSettingsMenuFrame
+
+	local masterVolume = 1
+	pcall(function() masterVolume = UserSettings().GameSettings.MasterVolume end)
+	volumeLevel.Value = math.min(math.max(math.floor((masterVolume * (maxVolumeLevel - 1)) + 1.5), 1), maxVolumeLevel)
+	volumeLevel.Changed:connect(function()
+		pcall(function() UserSettings().GameSettings.MasterVolume = (volumeLevel.Value - 1) / (maxVolumeLevel - 1) end)
+	end)
+
+	local backButton
+	if hasGraphicsSlider then
+		backButton = createTextButton("OK",Enum.ButtonStyle.RobloxRoundDefaultButton,Enum.FontSize.Size24,UDim2.new(0,180,0,50),UDim2.new(0,170,0,365))]] },
+		{ "goToMenu(settingsFrame,\"GameSettingsMenu\",\"left\",UDim2.new(0,525,0,350))",
+			"goToMenu(settingsFrame,\"GameSettingsMenu\",\"left\",UDim2.new(0,525,0,hasGraphicsSlider and 400 or 350))" },
 	}
 
 	local function find(obj, ...)
@@ -257,8 +368,8 @@ do
 		return string.sub(text, 1, a - 1) .. new .. string.sub(text, b + 1)
 	end
 
-	-- run a 2015 script in place of a 2014 one, with the changes made;
-	-- nothing happens if Legacy changed any of those lines
+	-- run a 2015 script in place of a 2014 one (or the 2014 script itself),
+	-- with the changes made; nothing happens if Legacy changed any of those lines
 	local function swap(script2014, script2015, changes)
 		local header = script2014 and string.match(script2014.Source, HEADER)
 		local header2015 = script2015 and string.match(script2015.Source, HEADER)
@@ -300,8 +411,15 @@ do
 				if not swap(find(gui, "ChatScript"), find(modules, "Chat"), CHAT_CHANGES) then
 					warn("[Early 2015] Couldn't swap in the 2015 chat (Legacy changed), using the 2014 one.")
 				end
+				if not swap(find(gui, "PlayerListScript"), find(modules, "PlayerlistModule"), LEADERBOARD_CHANGES) then
+					warn("[Early 2015] Couldn't swap in the 2015 leaderboard (Legacy changed), using the 2014 one.")
+				end
+				local settingsScript = find(gui, "Settings")
+				if not swap(settingsScript, settingsScript, SETTINGS_CHANGES) then
+					warn("[Early 2015] Couldn't add the volume slider (Legacy changed).")
+				end
 				fixGui(gui)
-				print("[Early 2015] 2015 backpack and chat swapped in, menus fixed.")
+				print("[Early 2015] 2015 backpack, chat and leaderboard swapped in, volume added, menus fixed.")
 			end)
 			if not ok then warn("[Early 2015] " .. tostring(err)) end
 			return legacy
