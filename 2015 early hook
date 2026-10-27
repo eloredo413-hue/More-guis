@@ -1,7 +1,7 @@
 -- [[ 2015 EARLY HOOK (mobile and PC) ]]
 -- Early 2015 is the 2014 GUI with Roblox's 2015 backpack and chat, before
 -- the dark top bar came in late 2015. This loads the 2014 GUI (menu,
--- health, leaderboard) and runs Legacy's own 2015 backpack and chat in
+-- health) and runs Legacy's own 2015 backpack and chat in
 -- place of the 2014 ones, set up the way they were without the top bar:
 --    60px hotbar slots above the health bar (3 on phones, 10 on PC)
 --    the arrow above the hotbar opens the inventory: "Search" on top, then
@@ -13,6 +13,8 @@
 --    and a darker box behind the chat while you type, lined up with the
 --    menu button (phones have no "click here to chat" bar, only PC does)
 --    early 2015 chat bubbles: see-through white, small round corners
+--    an early 2015 leaderboard: your name in a dark header, the list slides
+--    open under it from the ≡ tab (built on the 2016 leaderboard, shown on phones)
 --    a Volume slider in Settings > Game Settings, like the 2015 settings
 -- Fixes kept from the "2014 gui fix":
 --    the dark background behind the menus covers the whole screen (it left
@@ -312,6 +314,95 @@ do
 			"\t\t\t\t\t\t\t\ttouchCount = touchCount + 1\n\t\t\t\t\t\t\t\tdontFadeOutOnMouseLeave = true\n\t\t\t\t\t\t\t\tif not this.BackgroundVisible then this:FadeIn(0.25) end" },
 	}
 
+	-- the 2016 leaderboard, made to look like early 2015's: your name in a
+	-- dark header on top, the list slides open under it from the ≡ tab
+	local LEADERBOARD_CHANGES = {
+		-- 2016 hid it on phones; early 2015 showed it there
+		{ "local IsSmallScreenDevice = UserInputService.TouchEnabled and GuiService:GetScreenResolution().Y <= 500",
+			"local IsSmallScreenDevice = false" },
+		-- early 2015's thinner, slightly narrower rows
+		{ "local PlayerEntrySizeY = 24\n", "local PlayerEntrySizeY = 18\n" },
+		{ "local NameEntrySizeX = 170\n", "local NameEntrySizeX = 160\n" },
+		-- the list starts under the 40px header
+		{ "\tContainer.Position = UDim2.new(1, -167, 0, 2)", "\tContainer.Position = UDim2.new(1, -167, 0, 44)" },
+		{ "\t\t\t\tContainer.Position = UDim2.new(1, -offset, 0, 2)", "\t\t\t\tContainer.Position = UDim2.new(1, -offset, 0, 44)" },
+		{ "\nreturn Playerlist", [=[
+
+--[[ Early 2015: your name on top, the list slides open under it from the tab ]]--
+do
+	local HEADER_HEIGHT, SLIDE_TIME = 40, 0.25
+
+	local header = Instance.new('Frame')
+	header.Name = "PlayerListHeader"
+	header.BackgroundColor3 = BG_COLOR
+	header.BackgroundTransparency = BG_TRANSPARENCY
+	header.BorderSizePixel = 0
+	header.Parent = NewRobloxGui
+
+	local headerName = Instance.new('TextLabel')
+	headerName.Name = "PlayerName"
+	headerName.BackgroundTransparency = 1
+	headerName.Size = UDim2.new(1, -6, 1, 0)
+	headerName.Font = Enum.Font.SourceSansBold
+	headerName.FontSize = Enum.FontSize.Size18
+	headerName.TextColor3 = TEXT_COLOR
+	headerName.TextStrokeColor3 = TEXT_STROKE_COLOR
+	headerName.TextStrokeTransparency = TEXT_STROKE_TRANSPARENCY
+	headerName.TextXAlignment = Enum.TextXAlignment.Right
+	headerName.Text = Player.Name
+	headerName.Parent = header
+
+	-- the list slides inside this, so it can hide above its top edge
+	local slideClip = Instance.new('Frame')
+	slideClip.Name = "SlideClip"
+	slideClip.BackgroundTransparency = 1
+	slideClip.Size = UDim2.new(1, 0, 1, 0)
+	slideClip.ClipsDescendants = true
+	slideClip.Parent = Container
+	ScrollList.Parent = slideClip
+
+	local tab = Instance.new('TextButton')
+	tab.Name = "ExtendTab"
+	tab.BackgroundTransparency = 1
+	tab.Text = ""
+	tab.Size = UDim2.new(0, 44, 0, 20)
+	tab.Parent = Container
+	for i = 0, 1 do
+		local line = Instance.new('Frame')
+		line.BackgroundColor3 = Color3.new(1, 1, 1)
+		line.BorderSizePixel = 0
+		line.Size = UDim2.new(0, 22, 0, 2)
+		line.Position = UDim2.new(0.5, -11, 0, 5 + i * 4)
+		line.Parent = tab
+	end
+
+	local slide = Instance.new('NumberValue') -- 0 closed, 1 open
+	local function layout()
+		header.Size = UDim2.new(0, Container.Size.X.Offset, 0, HEADER_HEIGHT)
+		header.Position = UDim2.new(1, Container.Position.X.Offset, 0, 2)
+		header.Visible = Container.Visible
+		local shown = slide.Value * ScrollList.Size.Y.Offset
+		ScrollList.Position = UDim2.new(0, 0, 0, shown - ScrollList.Size.Y.Offset)
+		tab.Position = UDim2.new(0.5, -22, 0, shown + 2)
+	end
+
+	tab.MouseButton1Click:connect(function()
+		local goal = (slide.Value < 0.5) and 1 or 0
+		game:GetService('TweenService'):Create(slide, TweenInfo.new(SLIDE_TIME, Enum.EasingStyle.Quad), { Value = goal }):Play()
+	end)
+	slide.Changed:connect(layout)
+	Container.Changed:connect(function(property)
+		if property == 'Size' or property == 'Position' or property == 'Visible' then layout() end
+	end)
+	ScrollList.Changed:connect(function(property)
+		if property == 'Size' then layout() end
+	end)
+	layout()
+end
+
+return Playerlist]=] },
+	}
+
 	-- changes to the 2014 settings script itself
 	local SETTINGS_CHANGES = {
 		-- Game Settings: the 2015 volume slider, above OK (on PC, where the
@@ -418,8 +509,28 @@ do
 				if not swap(settingsScript, settingsScript, SETTINGS_CHANGES) then
 					warn("[Early 2015] Couldn't add the volume slider (Legacy changed).")
 				end
+				-- the 2016 leaderboard needs two 2016 modules, and PlayerDropDown
+				-- looks up Modules.Settings.SettingsHub when it loads (the 2016
+				-- settings menu itself isn't brought over)
+				local modules2016 = find(legacy, "Core", "2016", "NewRobloxGui", "Modules")
+				local tenFoot, dropDown = find(modules2016, "TenFootInterface"), find(modules2016, "PlayerDropDown")
+				if tenFoot and dropDown and swap(find(gui, "PlayerListScript"), find(modules2016, "PlayerlistModule"), LEADERBOARD_CHANGES) then
+					local folder = Instance.new("Folder")
+					folder.Name = "Modules"
+					folder.Parent = gui
+					tenFoot.Parent = folder
+					dropDown.Parent = folder
+					local settingsFolder = Instance.new("Folder")
+					settingsFolder.Name = "Settings"
+					settingsFolder.Parent = folder
+					local hub = Instance.new("ModuleScript")
+					hub.Name = "SettingsHub"
+					hub.Parent = settingsFolder
+				else
+					warn("[Early 2015] Couldn't swap in the leaderboard (Legacy changed), using the 2014 one.")
+				end
 				fixGui(gui)
-				print("[Early 2015] 2015 backpack and chat swapped in, volume added, menus fixed.")
+				print("[Early 2015] 2015 backpack and chat, early 2015 leaderboard, volume added, menus fixed.")
 			end)
 			if not ok then warn("[Early 2015] " .. tostring(err)) end
 			return legacy
