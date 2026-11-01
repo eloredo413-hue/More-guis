@@ -1,4 +1,5 @@
 -- [[ 2024 / 2023 / 2021 / 2019 / 2017 / 2015 EARLY / 2013 MOBILE / 2006 / 2005 HOOKS + PLACEHOLDERS ]]
+-- [[ + 2014 BACKPACK FIX (loads with the 2014 GUI) ]]
 -- [[ + RETRO TOPBARPLUS HOOK (classic icons on the 2019 / 2017 / 2016 / 2015 top bars) ]]
 -- Run AFTER the main Bloxy Paradox script.
 
@@ -25,6 +26,7 @@ do
 	local SIG_2023      = "111872120766790"
 	local SIG_2013      = "Year = 2013"
 	local SIG_2014      = "h5AEhK7N" -- the 2014 topbar's pastebin
+	local URL_2014FIX   = "https://gist.githubusercontent.com/eloredo413-hue/ed1b24318326687c9dc93033af880bf9/raw/2053cd3b7fb00377179c45194bd702a23e133819/2014%2520gui%2520fix"
 
 	local function fetchURL(url, label)
 		print("[" .. label .. "] Fetching...")
@@ -129,6 +131,37 @@ do
 				local src = fetchURL(URL_2005, "2005")
 				if src then return _ORIG_LS(src, name) end
 				return _ORIG_LS("-- [Hook] 2005 fetch failed", name)
+			end
+		end
+
+		-- Plain 2014: load the 2014 GUI as usual, plus the 2014 fix
+		-- (backpack, hotbar size, menu background). Only once per session:
+		-- it keeps watching for the 2014 GUI by itself. Skipped for the
+		-- 2015 early hook, which has its own backpack.
+		if not pending and code:find(SIG_2014, 1, true)
+		   and not code:find("2015 EARLY HOOK", 1, true)
+		   and not getgenv().BP_2014FixLoaded then
+			local fn, err = _ORIG_LS(code, name)
+			if type(fn) ~= "function" then return fn, err end
+			return function(...)
+				if not getgenv().BP_2014FixLoaded then
+					getgenv().BP_2014FixLoaded = true
+					task.spawn(function()
+						local src = fetchURL(URL_2014FIX, "2014 fix")
+						if not src then
+							getgenv().BP_2014FixLoaded = nil
+							return
+						end
+						local fix, fixErr = _ORIG_LS(src, "2014GuiFix")
+						if not fix then
+							warn("[2014 fix] Compile failed: " .. tostring(fixErr))
+							return
+						end
+						local ok, runErr = pcall(fix)
+						if not ok then warn("[2014 fix] Error: " .. tostring(runErr)) end
+					end)
+				end
+				return fn(...)
 			end
 		end
 
