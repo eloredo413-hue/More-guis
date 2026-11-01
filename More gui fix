@@ -14,7 +14,7 @@ end
 do
 	local URL_2024      = "https://gist.githubusercontent.com/eloredo413-hue/f0cf527c3c42f43fb90b33613f2f9a94/raw/2f8e97781c1403836df58510decebe961cc97074/2024%2520Gui"
 	local URL_2023_NEW  = "https://gist.githubusercontent.com/eloredo413-hue/4a556148bc45d14ac710a87efef6bcc6/raw/4893deb9647440ba0f9058e0666272fb20e48eba/2023%2520New%2520Gui"
-	local URL_2023_OLD  = "https://gist.githubusercontent.com/eloredo413-hue/820f4614fccf5cadbd8d84b18ee1635c/raw/6adda6838d3df2e8bd7533c1161eb0585093c2bd/2023%2520old"
+	local URL_2023_OLD  = "https://gist.githubusercontent.com/eloredo413-hue/0846e3711f0a0b6b66626c84ee874a0f/raw/6e8cb8c318e8c745314c54616535f287ca9981fd/2023%2520Old%2520Gui"
 	local URL_2021      = "https://gist.githubusercontent.com/eloredo413-hue/46ee252aa3b7420b76431369e2d5e091/raw/02e4c126aecb5efa720a257e005aa319ac7fe43b/2021%2520gui"
 	local URL_2019      = "https://gist.githubusercontent.com/eloredo413-hue/66cc25edc0c2247eca8dcd0a4ef5e0f6/raw/eb159f1b1ed65082a8b36e61559a23604ad82c60/2019%2520gui"
 	local URL_2017      = "https://gist.githubusercontent.com/eloredo413-hue/ad3e7490af84cde1ac7df5c0ab02e3a3/raw/e32854b71f049d1285f088069ebe4b7f51a55cde/2017%2520gui"
@@ -41,6 +41,28 @@ do
 		end
 		print("[" .. label .. "] Fetched " .. #src .. " bytes.")
 		return src
+	end
+
+	-- 2023 old only queues its GUI to load after a rejoin, so nothing
+	-- shows up when the rejoin doesn't happen. Like 2023 new, also load
+	-- the queued GUI in this server right away. Its payload runs once per
+	-- server, so its own load-here fallback doesn't load it twice.
+	local function alsoLoadHere(fn, ...)
+		if type(fn) ~= "function" or not (setfenv and getfenv) then
+			return fn, ...
+		end
+		local realQueue = queue_on_teleport or (syn and syn.queue_on_teleport)
+		setfenv(fn, setmetatable({
+			queue_on_teleport = function(payload)
+				if not realQueue then error("queue_on_teleport is not available") end
+				realQueue(payload)
+				task.spawn(function()
+					local ok, err = pcall(function() _ORIG_LS(payload)() end)
+					if not ok then warn("[2023 old] Loading here failed: " .. tostring(err)) end
+				end)
+			end,
+		}, { __index = getfenv(fn) }))
+		return fn
 	end
 
 	local function patched(code, name)
@@ -121,7 +143,7 @@ do
 			elseif variant == "old" then
 				print("[2023 Hook] Loading OLD 2023 GUI...")
 				local src = fetchURL(URL_2023_OLD, "2023 old")
-				if src then return _ORIG_LS(src, name) end
+				if src then return alsoLoadHere(_ORIG_LS(src, name)) end
 				warn("[2023 Hook] OLD fetch failed — falling back to base 2023.")
 			end
 		end
@@ -267,10 +289,26 @@ task.spawn(function()
 		return nil
 	end
 
+	-- Roblox auto-translation can reword labels like "2023 old" (it showed
+	-- up as "2023 years old"), so it's turned off on the buttons we touch.
+	local function noTranslate(obj)
+		pcall(function() obj.AutoLocalize = false end)
+	end
+
+	-- Sets the dropdown's label, and keeps it for a moment in case the
+	-- main script's own click handler rewrites it right after.
 	local function updateToggle(frame, text)
-		task.defer(function()
-			local toggle = findToggle(frame)
-			if toggle then toggle.Text = text .. "  ▼" end
+		local wanted = text .. "  ▼"
+		task.spawn(function()
+			local deadline = os.clock() + 0.6
+			repeat
+				local toggle = findToggle(frame)
+				if toggle then
+					noTranslate(toggle)
+					if toggle.Text ~= wanted then toggle.Text = wanted end
+				end
+				task.wait()
+			until os.clock() > deadline
 		end)
 	end
 
@@ -342,6 +380,7 @@ task.spawn(function()
 								end
 							end
 
+							noTranslate(btn2023)
 							btn2023.Text = "2023 new"
 							btn2023.MouseButton1Click:Connect(function()
 								playClick()
@@ -355,6 +394,7 @@ task.spawn(function()
 
 							local btn2023Old = btn2023:Clone()
 							btn2023Old.Name = "Topbar2023OldButton"
+							noTranslate(btn2023Old)
 							btn2023Old.Text = "2023 old"
 							btn2023Old.Position = UDim2.new(0, 0, 0, btn2023.Position.Y.Offset + 35)
 							btn2023Old.Parent = slider
@@ -392,6 +432,7 @@ task.spawn(function()
 							clone.Parent = slider
 
 							wipeHandlers(clone)
+							noTranslate(clone)
 							addHover(clone)
 
 							clone.MouseButton1Click:Connect(function()
@@ -421,6 +462,7 @@ task.spawn(function()
 							clone.Parent = slider
 
 							wipeHandlers(clone)
+							noTranslate(clone)
 							addHover(clone)
 
 							clone.MouseButton1Click:Connect(function()
@@ -450,6 +492,7 @@ task.spawn(function()
 							clone.Parent = slider
 
 							wipeHandlers(clone)
+							noTranslate(clone)
 							addHover(clone)
 
 							clone.MouseButton1Click:Connect(function()
@@ -480,6 +523,7 @@ task.spawn(function()
 							clone.Parent = slider
 
 							wipeHandlers(clone)
+							noTranslate(clone)
 							addHover(clone)
 
 							clone.MouseButton1Click:Connect(function()
@@ -513,6 +557,7 @@ task.spawn(function()
 							clone.Parent = slider
 
 							wipeHandlers(clone)
+							noTranslate(clone)
 							addHover(clone)
 
 							clone.MouseButton1Click:Connect(function()
@@ -542,6 +587,7 @@ task.spawn(function()
 							clone.Parent = slider
 
 							wipeHandlers(clone)
+							noTranslate(clone)
 							addHover(clone)
 
 							clone.MouseButton1Click:Connect(function()
@@ -572,6 +618,7 @@ task.spawn(function()
 							clone.Parent = slider
 
 							wipeHandlers(clone)
+							noTranslate(clone)
 							addHover(clone)
 
 							clone.MouseButton1Click:Connect(function()
@@ -602,6 +649,7 @@ task.spawn(function()
 							clone.Parent = slider
 
 							wipeHandlers(clone)
+							noTranslate(clone)
 							addHover(clone)
 
 							clone.MouseButton1Click:Connect(function()
