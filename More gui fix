@@ -1,4 +1,4 @@
--- [[ 2024 / 2023 / 2021 / 2019 / 2017 / 2015 EARLY / 2013 MOBILE / 2006 / 2005 HOOKS + PLACEHOLDERS ]]
+-- [[ 2024 / 2023 / 2021 / 2019 / 2017 / 2015 EARLY / 2013 MOBILE / 2008 / 2006 / 2005 HOOKS + PLACEHOLDERS ]]
 -- [[ + 2014 BACKPACK FIX (loads with the 2014 GUI) ]]
 -- [[ + RETRO TOPBARPLUS HOOK (classic icons on the 2019 / 2017 / 2016 / 2015 top bars) ]]
 -- Run AFTER the main Bloxy Paradox script.
@@ -21,7 +21,8 @@ do
 	local URL_2017      = "https://gist.githubusercontent.com/eloredo413-hue/11756686e69413c5bc6933e2e800af6f/raw/69d595b5b51becaed1303b22a6f95a967ce0ad5e/2017%2520gui"
 	local URL_2015EARLY = "https://gist.githubusercontent.com/eloredo413-hue/68973429a7a93b67dd0acfea666de508/raw/e461f4f6c1e169cc36f6b662b9265ce17b07effd/E2015%2520Gui"
 	local URL_2013MOB   = "https://gist.githubusercontent.com/eloredo413-hue/86c21fe27caf9a3c358d15d1b74dff93/raw/2f73f4947a9f13c987141bdc8af5fe7e4c5dfafd/2013%2520Mobile%2520gui"
-	local URL_2006      = "https://gist.githubusercontent.com/eloredo413-hue/e4182150a8bb79c060e86cee0c8502a3/raw/7168e05ba30196189fcd612181d88bb718a45ddc/2006-2007%2520Gui"
+	local URL_2008      = "https://gist.githubusercontent.com/eloredo413-hue/f60d1caf2307cefb517c11d84289ed1f/raw/1d45ddfb92fc749e5184f9a6cd05109fde9046c7/2008%2520gui"
+	local URL_2006      = "https://gist.githubusercontent.com/eloredo413-hue/a0101af36dd4a890607d7788a59382cf/raw/d0f911e883289cb7444cdf7dc2b562119c2355c0/2006-2007%2520Gui"
 	local URL_2005      = "https://gist.githubusercontent.com/eloredo413-hue/7eca661bd68389b3fb2ec5b762b3fb7a/raw/17af25bbea489d0e47334f0f72b183421522536e/2005%2520gui"
 	local SIG_2023      = "111872120766790"
 	local SIG_2013      = "Year = 2013"
@@ -117,6 +118,13 @@ do
 				local src = fetchURL(URL_2013MOB, "2013 mobile")
 				if src then return _ORIG_LS(src, name) end
 				return _ORIG_LS("-- [Hook] 2013 mobile fetch failed", name)
+
+			elseif pending == "2008" and code:find(SIG_2013, 1, true) then
+				getgenv().BP_PendingTopbar = nil
+				getgenv().BP_2023Variant = nil
+				local src = fetchURL(URL_2008, "2008")
+				if src then return _ORIG_LS(src, name) end
+				return _ORIG_LS("-- [Hook] 2008 fetch failed", name)
 
 			elseif pending == "2006" and code:find(SIG_2013, 1, true) then
 				getgenv().BP_PendingTopbar = nil
@@ -639,7 +647,39 @@ task.spawn(function()
 
 					task.wait(0.1)
 
-					-- STEP 8: Insert 2006 (under the oldest year newer than it)
+					-- STEP 8: Insert 2008 (under the oldest year newer than it, like 2010).
+					-- Like 2006, it rides on the 2013 button.
+					if not findButton(slider, "2008") then
+						local btn2013 = findButton(slider, "2013")
+						local anchor = findNewerAnchor(slider, 2008)
+						if btn2013 and anchor then
+							local clone = anchor:Clone()
+							clone.Name = "Topbar2008Button"
+							clone.Text = "2008"
+							clone.Position = UDim2.new(0, 0, 0, anchor.Position.Y.Offset + 35)
+							clone.Parent = slider
+
+							wipeHandlers(clone)
+							noTranslate(clone)
+							addHover(clone)
+
+							clone.MouseButton1Click:Connect(function()
+								playClick()
+								fireOriginal(btn2013)
+								getgenv().Force2008BubbleChat = false
+								getgenv().BP_PendingTopbar = "2008"
+								getgenv().BP_2023Variant = nil
+								print("[2008] Selected — will load on confirm.")
+								updateToggle(frame, "2008")
+							end)
+
+							shiftDown(slider, anchor.Position.Y.Offset, 35, clone)
+						end
+					end
+
+					task.wait(0.1)
+
+					-- STEP 9: Insert 2006 (under the oldest year newer than it)
 					if not findButton(slider, "2006") then
 						local btn2013 = findButton(slider, "2013")
 						local anchor = findNewerAnchor(slider, 2006)
@@ -670,7 +710,7 @@ task.spawn(function()
 
 					task.wait(0.1)
 
-					-- STEP 9: Insert 2005
+					-- STEP 10: Insert 2005
 					if not findButton(slider, "2005") then
 						local btn2013 = findButton(slider, "2013")
 						local anchor = findButton(slider, "2006")
