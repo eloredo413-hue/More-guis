@@ -1164,12 +1164,13 @@ local HealthFrame =
 	Instance.new("Frame")
 HealthFrame.Name =
 	"ClassicHealthFrame"
+-- The 2006 GUI's size: a thin bar, 7 wide and 82 tall (centred where the 2010 bar was)
 HealthFrame.AnchorPoint =
-	Vector2.new(1, 0.5)
+	Vector2.new(0.5, 0.5)
 HealthFrame.Size =
-	UDim2.new(0, 14, 0, 200)
+	UDim2.new(0, 7, 0, 82)
 HealthFrame.Position =
-	UDim2.new(1, -20, 0.5, 0)
+	UDim2.new(1, -27, 0.5, 0)
 HealthFrame.BackgroundColor3 =
 	Color3.fromRGB(255, 0, 0)
 HealthFrame.BorderSizePixel = 0
@@ -1191,16 +1192,19 @@ HealthBar.BackgroundColor3 =
 HealthBar.BorderSizePixel = 0
 HealthBar.Parent =
 	HealthFrame
+-- "Health" centred under the bar, in the 2006 GUI's blue
 local HealthLabel =
 	Instance.new("TextLabel")
+HealthLabel.AnchorPoint =
+	Vector2.new(0.5, 0)
 HealthLabel.Size =
 	UDim2.new(0, 50, 0, 15)
 HealthLabel.Position =
-	UDim2.new(0, -18, 1, 5)
+	UDim2.new(0.5, 0, 1, 5)
 HealthLabel.BackgroundTransparency = 1
 HealthLabel.Text = "Health"
 HealthLabel.TextColor3 =
-	Color3.fromRGB(0, 100, 255)
+	Color3.fromRGB(0, 0, 255)
 HealthLabel.Font =
 	CARTOON_FONT
 HealthLabel.TextSize = 14
